@@ -1,0 +1,21 @@
+---
+
+- name: --- GET INFO using CLI ---
+  hosts: esnog_arista
+  gather_facts: false
+  vars_files:
+    - ./../group_vars/arista.yml
+
+  tasks:
+
+# ----------------------------------
+#   USING COMMAND and JSON
+# ----------------------------------      
+
+  # ------------- SHOW VERSION
+
+  - name: GATHERING INFO using CLI
+     arista.eos.eos_command:
+         commands: "show ver | json"
+      register: SHOW_VER
+

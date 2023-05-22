@@ -1,0 +1,70 @@
+---
+
+- name: SHOW SERIAL NUMBER
+  hosts: esnog_arista
+  gather_facts: false
+
+  vars_files:
+    - ./group_vars/arista.yml
+
+  tasks:
+
+   - name: GATHERING INFO
+     arista.eos.eos_facts:
+           gather_subset:
+            - hardware
+            - '!config'
+            - '!interfaces'
+
+   - name: Hostname - Model (P/N) - Serial Number
+     debug:
+         msg: "{{ inventory_hostname }} - {{ ansible_net_model }} - {{ ansible_net_serialnum }}"
+
+
+#
+#  Gathering info USING EOS_FACTS ( -vvv )   
+#  
+#  Output Example:   
+# 
+#  TASK [GATHERING INFO] *******************************************************************************************************
+#  task path: /home/carlos/ansible/arista-inventory.yml:12
+#  redirecting (type: terminal) ansible.builtin.eos to arista.eos.eos
+#  redirecting (type: cliconf) ansible.builtin.eos to arista.eos.eos
+#  ok: [lcr-as56882] => {
+#      "ansible_facts": {
+#          "ansible_net_api": "cliconf",
+#          "ansible_net_filesystems": [
+#              "file:",
+#              "flash:",
+#              "system:"
+#          ],
+#          "ansible_net_fqdn": "lcr-as56882",
+#          "ansible_net_gather_network_resources": [],
+#          "ansible_net_gather_subset": [
+#              "default",
+#              "hardware"
+#          ],
+#          "ansible_net_hostname": "aalmenar-as62080",
+#          "ansible_net_image": "flash:/vEOS-lab.swi",
+#          "ansible_net_memfree_mb": 1163.70703125,
+#          "ansible_net_memtotal_mb": 1959.76953125,
+#          "ansible_net_model": "vEOS-lab",
+#          "ansible_net_python_version": "3.10.6",
+#          "ansible_net_serialnum": "BBA84765032342497804F9C41C0F",
+#          "ansible_net_system": "eos",
+#          "ansible_net_version": "4.26.5M",
+#          "ansible_network_resources": {}
+#      },
+#      "changed": false,
+#      "invocation": {
+#          "module_args": {
+#              "available_network_resources": false,
+#              "gather_network_resources": null,
+#              "gather_subset": [
+#                  "hardware",
+#                  "!config",
+#                  "!interfaces"
+#              ]
+#          }
+#      }
+#  }
