@@ -1,0 +1,30 @@
+# https://github.com/ansible-collections/arista.eos/blob/main/docs/arista.eos.eos_user_module.rst
+# https://docs.ansible.com/ansible/latest/collections/arista/eos/eos_user_module.html#ansible-collections-arista-eos-eos-user-module
+
+# Maybe there is another way, specially if you want to hide "configured_password"
+# But I did to configure my lab
+
+---
+
+- name: CREATE USER - carlos
+  hosts: esnog_arista
+
+  gather_facts: false
+
+  vars_files:
+    - ./../group_vars/arista.yml
+
+  tasks:
+
+    - name: Set CARLOS user to privilege level 15
+      arista.eos.eos_user:
+        name: carlos
+        configured_password: esnog29
+        role: network-admin
+        privilege: 15
+        sshkey: './files/carlos_ssh_id_rsa.pub'
+
+    - name: Save config
+      arista.eos.eos_config:
+        save_when: modified
+

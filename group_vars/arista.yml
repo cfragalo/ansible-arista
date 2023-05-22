@@ -1,0 +1,14 @@
+# Credentials
+
+ansible_user: admin
+ansible_password: carlos123
+
+ansible_become_method: runas
+
+ansible_network_os: eos
+
+ansible_connection: ansible.netcommon.network_cli
+
+ansible_network_cli_ssh_type: paramiko
+
+connect_timeout: 60

@@ -1,0 +1,15 @@
+---
+
+- name: -- DEVICE RELOAD WHITHOUT confirmation ---
+  hosts: esnog_arista
+  gather_facts: false
+
+  vars_files:
+    - ./../group_vars/arista.yml
+
+  tasks:
+
+    - name: Reload the Device
+      eos_command:
+        commands:
+          - reload now force

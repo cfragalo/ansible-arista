@@ -1,0 +1,16 @@
+---
+
+- name: DELETE USER
+  hosts: esnog_arista
+  gather_facts: false
+  
+  vars_files:
+    - ./../group_vars/arista.yml
+
+  tasks:
+    
+    - name: DELETE USERNAME 
+      arista.eos.eos_config:
+        lines:
+          - no username carlos
+        save_when: "modified"
