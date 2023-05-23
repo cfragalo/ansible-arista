@@ -1,0 +1,5 @@
+[esnog_juniper]
+tecnocratica-as15954    ansible_host=200.0.0.4
+
+[esnog_arista]
+lcr-as56882	        ansible_host=200.0.0.2
