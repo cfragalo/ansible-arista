@@ -1,0 +1,25 @@
+#
+# Setting up OpenSSH to run in FIPS mode
+#
+# https://www.ibm.com/docs/en/zos/2.2.0?topic=suorifm-steps-setting-up-openssh-run-in-fips-mode
+# https://it.megocollector.com/linux/ssh-and-fips-mode-enabled/
+
+---
+
+- name: CONFIG SSH - FIPS restrictions
+  hosts: carlos_lab
+  gather_facts: false
+
+  vars_files:
+    - ./../group_vars/arista.yml
+
+  tasks:
+
+    - name: Appliying FIPS restrictions
+      arista.eos.eos_config:
+        src: ./../template/ssh_management_profile_carlos.conf
+        save_when: modified
+
+
+
+

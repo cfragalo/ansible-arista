@@ -1,0 +1,38 @@
+#  Playbook to WIPE all Arista Devices and reset to default values
+
+---
+
+- name: --- ARISTA WIPE CONFIG & RESET TO DEFAULT VALUES ---
+  gather_facts: false
+  
+  hosts: carlos_lab
+
+  vars_files:
+    - ./../group_vars/arista.yml 
+
+  tasks:
+
+    - name: deactivate schedule tech-support
+      arista.eos.eos_config:
+        lines:
+          - no schedule tech-support
+      ignore_errors: true
+    
+    - name: Remove items
+      arista.eos.eos_command:
+        commands:
+          - delete /recursive flash:/schedule/    # Remove saved tech-support
+          - delete flash:/rollback*               # Remove all rollback files
+          - delete flash:/*ssl*.*                 # Remove all SSL certificates files
+          - delete flash:/macsec_license.json     # Remove macsec license 
+          - write erase now                       # FACTORY DEFAULT command
+      ignore_errors: true
+
+
+# Be careful, after reload switch will be with defaults settings,
+# and you're not able to access unless you're using console port
+
+    - name: RELOAD device
+      eos_command:
+         commands:
+           - reload now force
