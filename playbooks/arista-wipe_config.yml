@@ -12,27 +12,77 @@
 
   tasks:
 
-    - name: deactivate schedule tech-support
+#  -----  Saved Configs (TAC and rollback)
+
+    - name: DELETE - saved tech-support
+      arista.eos.eos_command:
+        commands:
+          - delete /recursive flash:/schedule/*
+      ignore_errors: true
+
+    - name: DELETE - saved TAC tech-support
+      arista.eos.eos_command:
+        commands:
+          - delete flash:/*tech*.*
+      ignore_errors: true
+
+    - name: DELETE - ROLLBACK files
+      arista.eos.eos_command:
+        commands:
+          - delete flash:/rollback*
+      ignore_errors: true
+
+    - name: DELETE - CHECKPOINT files
+      arista.eos.eos_command:
+        commands:
+          - delete checkpoint:/*
+      ignore_errors: true
+
+    - name: DEACTIVATE - schedule tech-support
       arista.eos.eos_config:
         lines:
           - no schedule tech-support
       ignore_errors: true
-    
-    - name: Remove items
+
+
+# ----- SSH/SSL CERTIFICATES & FILES
+
+    - name: DELETE - applied SSLKeys
       arista.eos.eos_command:
         commands:
-          - delete /recursive flash:/schedule/    # Remove saved tech-support
-          - delete flash:/rollback*               # Remove all rollback files
-          - delete flash:/*ssl*.*                 # Remove all SSL certificates files
-          - delete flash:/macsec_license.json     # Remove macsec license 
-          - write erase now                       # FACTORY DEFAULT command
+          - delete sslkey:/*
+      ignore_errors: true
+
+    - name: DELETE - SSL files
+      arista.eos.eos_command:
+        commands:
+          - delete flash:/*ssl*.*
+      ignore_errors: true
+
+    - name: DELETE - Certificate files (.crt)
+      arista.eos.eos_command:
+        commands:
+          - delete certificate:/*
+      ignore_errors: true
+
+    - name: DELETE - Certificate files (.ca)
+      arista.eos.eos_command:
+        commands:
+          - delete ssh-ca-key:/*
       ignore_errors: true
 
 
-# Be careful, after reload switch will be with defaults settings,
-# and you're not able to access unless you're using console port
+#  -----  DELETE current configuration
 
-    - name: RELOAD device
+    - name: DELETE current configuration
+      arista.eos.eos_command:
+        commands:
+          - write erase now
+
+
+#  -----  RELOAD
+
+    - name: reboot switch
       eos_command:
-         commands:
-           - reload now force
+        commands:
+          - reload now force
