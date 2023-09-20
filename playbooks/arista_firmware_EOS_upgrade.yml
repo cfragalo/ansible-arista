@@ -1,0 +1,319 @@
+# Playbook to upgrade Arista gear safely
+
+# https://www.arista.com/en/um-eos/eos-standard-upgrades-and-downgrades?searchword=eos%20section%2025%204%20route%20management
+
+---
+
+- name: --- EOS upgrade ---
+  gather_facts: false
+  hosts: tor_ord1
+
+  vars_files:
+    - ./../group_vars/arista.yml
+  
+  vars:
+
+  # Version: 4.27.4M
+      upgrade_eos_version: 4.27.4M
+      upgrade_eos_file: EOS-4.27.4M.swi
+      upgrade_eos_md5: 6e41ed9547ab615f225609e273b2a935  #  Arista's File: EOS-4.27.4M.swi.md5sum
+      upgrade_eos_file_size_bits: 1117046654  #  from 'ls -la' 
+
+      eos_repository_server: http://10.0.0.10/arista/
+
+
+  tasks:
+
+
+# ------- Collecting info 
+
+     - name: GATHER Info from device to upgrade
+       arista.eos.eos_facts:
+         gather_subset: 
+           - hardware
+           - '!config'
+           - '!interfaces'
+
+
+# ------- CHECK if we have to upgrade 
+
+
+# CHECK Running version vs Upgrade version 
+
+     - name: CHECK - running version != upgrade version
+       assert:
+         that:
+            -  upgrade_eos_version != ansible_net_version 
+         success_msg: " {{ inventory_hostname }} --> MUST BE upgraded "
+         fail_msg: " {{ inventory_hostname }} --> NO upgrade needs - Running same version "
+       ignore_errors: true
+
+
+# CHECK if device have enough space in memory to fit the new version
+
+     - name: CHECK - device have enough space 
+       assert:
+         that:
+            # Maths: upgrade_eos_file_size_bits / 1024 (bits) = upgrade_eos_file_size_KB / 1024 (Kilo Bytes) = upgrade_eos_file_size_MB (Mega Byte)
+            - ansible_net_memfree_mb > {{ upgrade_eos_file_size_bits / 1024 / 1024 }} 
+         success_msg: " {{ inventory_hostname }} --> ENOUGH memory"
+         fail_msg: " {{ inventory_hostname }} --> NOT enough memory"
+       ignore_errors: true
+  
+
+# ---------------- DEFINE condition to upgrade
+
+     - set_fact:
+         
+         # Store current version -> Old EOS version file will be deleted after upgrade
+         old_eos_image: "{{ ansible_net_image }}"
+         
+         # Define condition to upgrade
+         perform_upgrade: "{{ upgrade_eos_version != ansible_net_version and ansible_net_memfree_mb > upgrade_eos_file_size_bits / 1024 / 1024 }}"          
+
+
+# ------- Upgrade starts
+
+
+# UPLOAD EOS FILE
+
+     - name: UPLOAD {{ upgrade_eos_file }}
+       arista.eos.eos_command:
+          commands:
+             # - 'routing-context vrf MGMT' # This command is deprecated (earlier 4.26 EOS versions)
+             - cli vrf MGMT   # From 4.26 EOS version 
+             - 'copy {{ eos_repository_server }}{{ upgrade_eos_file }} flash:'
+       when: 
+            - perform_upgrade
+    
+       ignore_errors: true  # if we have any issue with one device we cannot stop this playbook
+
+
+# CHECK new upladed EOS File MD5 Hash
+
+     - name: GET MD5 info {{ upgrade_eos_file }} 
+       arista.eos.eos_command:
+         commands:
+            - verify /md5 flash:{{ upgrade_eos_file }}
+       register: get_md5  
+       when: 
+            - perform_upgrade
+
+
+     - set_fact:
+         uploaded_MD5: "{{ get_md5.stdout[0] | regex_search(regexp,'\\1') }}"
+       vars:
+         regexp: '\= (.*)'
+
+
+     - name: CHECK MD5 consistency  
+       assert:
+         that:
+            - upgrade_eos_md5 == uploaded_MD5[0]
+         success_msg: " {{ inventory_hostname }} --> equal MD5"
+         fail_msg: " {{ inventory_hostname }} --> MD5 is NOT equal"
+       ignore_errors: true
+
+
+     - set_fact:
+        perform_upgrade: "{{ upgrade_eos_md5 == uploaded_MD5[0] }}" 
+
+
+#  CHANGE BOOT variable to new EOS
+
+     - name: CHANGE BOOT VARIABLE to new image 
+       arista.eos.eos_config: 
+        commands: 
+          - boot system flash:/{{ upgrade_eos_file }}
+       when: 
+            - perform_upgrade 
+
+
+# ------- Get config from device before reboot
+
+# Timestamp
+
+     - name: GET localhost date/time
+       setup:
+         filter: "ansible_date_time"
+         gather_subset: "!all"
+       delegate_to: localhost
+
+
+     - name: TIMESTAMP (%Y%m%d)
+       set_fact:
+         DATE_TIME: "{{ ansible_date_time.date }}"
+       delegate_to: localhost
+
+
+     - name: TIMESTAMP (%Y%m%d-%H%M%S)
+       command: date +%Y%m%d-%H%M%S
+       register: timestamp
+
+
+# Create Backup directory with current date
+
+     - name: Create Directory {{DATE_TIME}}
+       file:
+         path: ./backups/{{DATE_TIME}}
+         state: directory
+       run_once: true
+       delegate_to: localhost
+
+
+# Get config from device before reboot
+
+     - name: BACKUP DEVICE CONFIG
+       arista.eos.eos_config:
+          backup: yes
+          backup_options:
+             filename: "{{ inventory_hostname }}-CONFIG-{{ timestamp.stdout }}"
+             dir_path: "./backups/{{DATE_TIME}}"
+       when: 
+            - perform_upgrade 
+
+
+# -------  Get/Save current status info 
+
+# BGP 
+
+     - name: BGP Status
+       arista.eos.eos_command:
+         commands:
+            - 'show ip bgp summary'
+       register: current_status_bgp
+       #run_once: true
+       when: 
+            - perform_upgrade 
+
+
+     - name: SAVE BGP status 
+       lineinfile: 
+         path: "./backups/{{DATE_TIME}}/{{ inventory_hostname }}-BGP_SUMMARY-{{ timestamp.stdout }}"
+         line: "{{ current_status_bgp.stdout_lines[0] | join ('\n') }}"
+         insertbefore: EOF
+         create: true
+
+
+# INTERFACE STATUS
+
+     - name: Show INTERFACE Status
+       arista.eos.eos_command:
+         commands:
+            - 'show interface description'
+       register: current_status_interface
+       #run_once: true
+       when: 
+            - perform_upgrade 
+
+
+     - name: SAVE Interface Status   
+       lineinfile: 
+         path: "./backups/{{DATE_TIME}}/{{ inventory_hostname }}-INTERFACE_STATUS-{{ timestamp.stdout }}"
+         line: "{{ current_status_interface.stdout_lines[0] | join ('\n') }}"
+         insertbefore: EOF
+         create: true
+
+
+# -------  MAINTENANCE MODE - SAVE - RELOAD  
+
+# Arista MAINTENANCE MODE and Save Configuration (https://www.arista.com/en/um-eos/eos-maintenance-mode)
+
+     - name: CONFIGURING ARISTA MAINTENANCE MODE 
+       arista.eos.eos_config:
+          lines: 
+             - bgp {{ item }}
+             - quiesce
+             - exit
+          parents: maintenance
+          save_when: always    
+       loop:
+             #  Maintenance: BGP Peer Groups you have to apply (change these names as you need it)
+             - SPINE
+             # - CORE
+             # - TOR
+             # - LOAD BALANCER
+             # - FIREWALL
+       when: 
+            - perform_upgrade
+
+
+#  RELOAD in 7 minutes (Draining traffic)
+
+     - name: RELOAD switch in 7 minutes
+       eos_command:
+          commands:
+             - reload in 7 force   #  7 minutes - Drain traffic 
+       when: 
+            - perform_upgrade
+
+
+#  RECONNECT after 25 minutes 
+
+ 
+     - name: RECONNECT after 25 minutes
+       wait_for_connection:
+          delay: 1500          # 7  minutes - Drain Traffic -> Send reload signal (Previous step)
+                               # 5  minutes - Restart & Load new EOS version (EOS Booting time)
+                               # 13 minutes - Start all linecards, interfaces, routing instances, ...
+
+
+# -------  After reload - Let's Check if Arista is Upgraded :-)   
+
+
+# Collecting info after upgrade 
+
+
+     - name: GATHER Info from device AFTER RELOAD
+       arista.eos.eos_facts:
+         gather_subset: 
+           - hardware
+           - '!config'
+           - '!interfaces'
+       when: 
+            - perform_upgrade
+
+
+     - name: CHECK if the device is UPGRADED
+       assert:
+         that:
+            -  upgrade_eos_version == ansible_net_version 
+         success_msg: " {{ inventory_hostname }} --> UPGRADED :-) "
+         fail_msg: " {{ inventory_hostname }} --> NOT UPGRADED "
+         quiet: true
+       ignore_errors: true
+       when: 
+            - perform_upgrade
+
+
+     - set_fact:
+         
+         # Define condition to successful EOS upgrade
+         successful_eos_upgrade: "{{ ansible_net_version == upgrade_eos_version and ansible_net_version != old_eos_image }}" 
+
+
+#  DISABLE maintenance mode and Save config
+
+
+     - name: DISABLE MAINTENANCE Mode
+       arista.eos.eos_config:
+          lines: 
+             - no maintenance
+          save_when: always     # Save config after disable maintenance !!!!
+       when: 
+            # - " 'spine' in inventory_hostname " 
+            - successful_eos_upgrade
+
+
+# Delete old EOS file
+
+
+     - name: REMOVE OLD EOS file  
+       arista.eos.eos_config: 
+        commands: 
+          - delete {{ old_eos_image }}
+       when: 
+            - successful_eos_upgrade
+
+
+#  -------------------  ARISTA IS NOW UPGRADED :-) 
